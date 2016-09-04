@@ -1,24 +1,8 @@
 	.code16
-# rewrite with AT&T syntax by falcon <wuzhangjin@gmail.com> at 081012
-#
-#	setup.s		(C) 1991 Linus Torvalds
-#
-# setup.s is responsible for getting the system data from the BIOS,
-# and putting them into the appropriate places in system memory.
-# both setup.s and system has been loaded by the bootblock.
-#
-# This code asks the bios for memory/disk/other parameters, and
-# puts them in a "safe" place: 0x90000-0x901FF, ie where the
-# boot-block used to be. It is then up to the protected mode
-# system to read them from there before the area is overwritten
-# for buffer-blocks.
-#
 
-# NOTE! These had better be the same as in bootsect.s!
-
-	.equ INITSEG, 0x9000	# we move boot here - out of the way
-	.equ SYSSEG, 0x1000	# system loaded at 0x10000 (65536).
-	.equ SETUPSEG, 0x9020	# this is the current segment
+	.equ INITSEG, 0x9000
+	.equ SYSSEG, 0x1000
+	.equ SETUPSEG, 0x9020
 
 	.global _start, begtext, begdata, begbss, endtext, enddata, endbss
 	.text
@@ -29,102 +13,100 @@
 	begbss:
 	.text
 
-	ljmp $SETUPSEG, $_start	
 _start:
 
-# ok, the read went well so we get current cursor position and save it for
-# posterity.
+# read cur position in 0x90000~0x90001 two byte
+	mov $0x03, %ah # read cur position
+	xor %bh, %bh # clean page
+	int $0x10 # read my bro
 
-	mov	$INITSEG, %ax	# this is done in bootsect already, but...
-	mov	%ax, %ds
-	mov	$0x03, %ah	# read cursor pos
-	xor	%bh, %bh
-	int	$0x10		# save it in known place, con_init fetches
-	mov	%dx, %ds:0	# it from 0x90000.
-# Get memory size (extended mem, kB)
+	mov $INITSEG, %ax
+	mov %ax, %ds
+	add $0x0800, %dx # lxhuster tell me to show lines below 8
+	mov %dx, %ds:0 # save cur position to 0x90000
 
-	mov	$0x88, %ah 
-	int	$0x15
-	mov	%ax, %ds:2
 
-# Get video-card data:
+# Get memory size (extended mem, kB) to 0x90002
+	mov $0x88, %ah
+	int $0x15
+	mov %ax, %ds:2
 
-	mov	$0x0f, %ah
-	int	$0x10
-	mov	%bx, %ds:4	# bh = display page
-	mov	%ax, %ds:6	# al = video mode, ah = window width
+
+# get show mode of the video card
+    mov $0x0f, %ah
+    int $0x10
+    mov %bx, %ds:4 #bh display page
+    mov %ax, %ds:6 #al indicate video mode, ah indicate window width 
+
 
 # check for EGA/VGA and some config parameters
-
-	mov	$0x12, %ah
-	mov	$0x10, %bl
-	int	$0x10
-	mov	%ax, %ds:8
-	mov	%bx, %ds:10
-	mov	%cx, %ds:12
+	mov $0x12, %ah
+	mov $0x10, %bl
+	int $0x10
+	mov %ax, %ds:8
+	mov %bx, %ds:10
+	mov %cx, %ds:12
 
 # Get hd0 data
-
-	mov	$0x0000, %ax
-	mov	%ax, %ds
-	lds	%ds:4*0x41, %si
-	mov	$INITSEG, %ax
-	mov	%ax, %es
-	mov	$0x0080, %di
-	mov	$0x10, %cx
-	rep
-	movsb
-
-# Get hd1 data
-
-	mov	$0x0000, %ax
-	mov	%ax, %ds
-	lds	%ds:4*0x46, %si
-	mov	$INITSEG, %ax
-	mov	%ax, %es
-	mov	$0x0090, %di
-	mov	$0x10, %cx
-	rep
-	movsb
-
-# Check that there IS a hd1 :-)
-
-	mov	$0x01500, %ax
-	mov	$0x81, %dl
-	int	$0x13
-	jc	no_disk1
-	cmp	$3, %ah
-	je	is_disk1
-no_disk1:
-	mov	$INITSEG, %ax
-	mov	%ax, %es
-	mov	$0x0090, %di
-	mov	$0x10, %cx
-	mov	$0x00, %ax
-	rep
-	stosb
-is_disk1:
-
-# now we want to move to protected mode ...
-
-	cli			# no interrupts allowed ! 
-
-# first we move the system to it's rightful place
-
-	mov	$0x0000, %ax
-	cld			# 'direction'=0, movs moves forward
-do_move:
-	mov	%ax, %es	# destination segment
-	add	$0x1000, %ax
-	cmp	$0x9000, %ax
-	jz	end_move
-	mov	%ax, %ds	# source segment
-	sub	%di, %di
-	sub	%si, %si
-	mov 	$0x8000, %cx
+	mov $0x0000, %ax
+	mov %ax, %ds
+	lds %ds:4*0x41, %si
+	mov $INITSEG, %ax
+	mov %ax, %es
+	mov $0x0080, %di
+	mov $0x08, %cx
 	rep
 	movsw
-	jmp	do_move
+
+# Get hd1 data
+	mov $0x0000, %ax
+	mov %ax, %ds
+	lds %ds:4*0x46, %si
+	mov $INITSEG, %ax
+	mov %ax, %es
+	mov $0x0090, %di
+	mov $0x08, %cx
+	rep
+	movsw
+
+# query bios is there has second hd or not
+	mov $0x1500, %ax
+	mov $0x81, %dl # 0x80 indicate first driver, 0x81 indicate second driver
+	int $0x13
+	jc no_disk1
+	cmp $0x03, %ah # ah = 0x03 means hd
+	je is_disk1
+
+no_disk1: # clear hd1 cache
+	mov $INITSEG, %ax
+	mov %ax, %es
+	lds %es:4*0x46, %di
+	cld # clear DF flag, means auto inc
+	mov $0x10, %cx
+	mov $0x00, %ax
+	rep
+	stosb
+
+# we mov system to 0x0000
+is_disk1:
+	cli
+
+	mov $0x00, %ax
+
+do_move:
+	mov %ax, %es
+	add $0x1000, %ax
+	cmp $0x9000, %ax
+	jz end_move
+	mov %ax, %ds
+	xor %si, %si
+	xor %di, %di
+	cld
+	mov $0x8000, %cx
+	rep 
+	movsw
+	jmp do_move
+
 
 # then we load the segment descriptors
 
