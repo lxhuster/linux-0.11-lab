@@ -106,7 +106,6 @@ int	$0x10
 mov	$SYSSEG, %ax
 mov	%ax, %es		# segment of 0x010000
 call	read_it
-call	kill_motor
 
 # After that we check which root-device to use. If the device is
 # defined (#= 0), nothing is done and the given device is used.
@@ -224,19 +223,6 @@ pop	%bx
 pop	%ax
 jmp	read_track
 
-#/*
-# * This procedure turns off the floppy drive motor, so
-# * that we enter the kernel in a known state, and
-# * don't have to worry about it later.
-# */
-kill_motor:
-push	%dx
-mov	$0x3f2, %dx
-mov	$0, %al
-outsb
-pop	%dx
-ret
-
 sectors:
 .word 0
 
@@ -244,10 +230,6 @@ msg1:
 .byte 13,10
 .ascii "Loading lxhuster ( ^_^ ) .."
 .byte 13,10,13,10
-
-msg2:
-.byte 13, 10
-.ascii "max sector of track: "
 
 .org 508
 root_dev:
