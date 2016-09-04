@@ -21,7 +21,7 @@ begbss:
 .equ SYSSEG, 0x1000
 .equ ENDSEG, SYSSEG + SYSSIZE
 
-# first hd, first partion
+#* first hd, first partion
 .equ ROOT_DEV, 0x301
 
 _start:
@@ -44,42 +44,41 @@ _start:
 	ljmp $INITSEG, $go
 
 
-# this is not my code
-go:	mov	%cs, %ax
-mov	%ax, %ds
-mov	%ax, %es
-# put stack at 0x9ff00.
-mov	%ax, %ss
-mov	$0xFF00, %sp		# arbitrary value >>512
+# go to set stack and sec addr
+go:	
+mov %cs, %ax
+mov %ax, %ds
+mov %ax, %es
 
-# load the setup-sectors directly after the bootblock.
-# Note that 'es' is already set up.
+# set stack addr
+mov %ax, %ss
+mov $0xff00, %sp
 
+
+
+#* in this sector we load setup to 0x90200
 load_setup:
-mov	$0x0000, %dx		# drive 0, head 0
-mov	$0x0002, %cx		# sector 2, track 0
-mov	$0x0200, %bx		# address = 512, in INITSEG
-.equ    AX, 0x0200+SETUPLEN
-mov     $AX, %ax		# service 2, nr of sectors
-int	$0x13			# read it
-jnc	ok_load_setup		# ok - continue
-mov	$0x0000, %dx
-mov	$0x0000, %ax		# reset the diskette
-int	$0x13
-jmp	load_setup
+mov $0x0000, %dx # dh indicate head num, dl indicate driver num
+mov $0x0002, %cx # ch indicate low 8 bits of track num, cl[7:6] indicate highe bits of track num, cl[5:0] indicate sector num
+mov $0x0200, %bx # es:bx indicate where the out data should put, then we know it is 0x090200
 
-ok_load_setup:
+.equ AX, 0x0200+SETUPLEN # ah indicate use sevice 2, and al indicate the num of sectors need to read
+mov $AX, %ax
+int $0x13 # come on read setup
+# if read failed, then have a coffee man
 
 # Get disk drive parameters, specifically nr of sectors/track
 
-mov	$0x00, %dl
-mov	$0x0800, %ax		# AH=8 is get drive parameters
-int	$0x13
-mov	$0x00, %ch
-#seg cs
-mov	%cx, %cs:sectors+0	# %cs means sectors is in %cs
-mov	$INITSEG, %ax
-mov	%ax, %es
+# Get disk drive parameters, specifically nr of sectors/track
+mov $0x00, %dl
+mov $0x0800, %ax
+int $0x13
+mov $0x00, %ch # cl is the sector num of a track
+
+mov %cx, sectors
+mov $INITSEG, %ax
+mov %ax, %es
+
 
 # Print some inane message
 
@@ -93,6 +92,13 @@ mov	$0x0007, %bx		# page 0, attribute 7 (normal)
 mov     $msg1, %bp
 mov	$0x1301, %ax		# write string, move cursor
 int	$0x10
+
+
+
+#*
+#* this is not my  rewrite code, copy system moudle to 0x10000
+#*
+
 
 # ok, we've written the message, now
 # we want to load the system (at 0x10000)
@@ -238,6 +244,10 @@ msg1:
 .byte 13,10
 .ascii "Loading lxhuster ( ^_^ ) .."
 .byte 13,10,13,10
+
+msg2:
+.byte 13, 10
+.ascii "max sector of track: "
 
 .org 508
 root_dev:
