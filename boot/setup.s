@@ -108,13 +108,12 @@ do_move:
 	jmp do_move
 
 
-# then we load the segment descriptors
-
+# load gdt, idt
 end_move:
-	mov	$SETUPSEG, %ax	# right, forgot this at first. didn't work :-)
-	mov	%ax, %ds
-	lidt	idt_48		# load idt with 0,0
-	lgdt	gdt_48		# load gdt with whatever appropriate
+	mov $SETUPSEG, %ax
+	mov %ax, %ds
+	lgdt gdt_48
+	lidt idt_48
 
 # that was painless, now we enable A20
 
@@ -194,27 +193,31 @@ empty_8042:
 	jnz	empty_8042	# yes - loop
 	ret
 
-gdt:
-	.word	0,0,0,0		# dummy
+# total 3 table
+gdt_table:
+	.word 0, 0, 0, 0 # this table no use
 
-	.word	0x07FF		# 8Mb - limit=2047 (2048*4096=8Mb)
-	.word	0x0000		# base address=0
-	.word	0x9A00		# code read/exec
-	.word	0x00C0		# granularity=4096, 386
+# code seg descriptor
+	.word 0x07ff # seg limit 8m
+	.word 0x0000 # code seg base addr
+	.word 0x9A00 # code seg can read and exec
+	.word 0x00C0 # set seg limit mode
 
-	.word	0x07FF		# 8Mb - limit=2047 (2048*4096=8Mb)
-	.word	0x0000		# base address=0
-	.word	0x9200		# data read/write
-	.word	0x00C0		# granularity=4096, 386
+# data seg descriptor
+	.word 0x07ff # seg limit 8m
+	.word 0x0000
+	.word 0x9200 # data seg can read write
+	.word 0x00C0 # set seg limit mode
+
 
 idt_48:
-	.word	0			# idt limit=0
-	.word	0,0			# idt base=0L
+	.word 0x00
+	.word 0x00, 0x00
 
 gdt_48:
-	.word	0x800			# gdt limit=2048, 256 GDT entries
-	.word   512+gdt, 0x9		# gdt base = 0X9xxxx, 
-	# 512+gdt is the real gdt after setup is moved to 0x9020 * 0x10
+	.word 0x800 # limit 256 num of descriptor
+	.word gdt_table+512, 0x9
+
 	
 .text
 endtext:
