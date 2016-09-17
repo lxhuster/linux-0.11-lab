@@ -117,13 +117,6 @@ end_move:
 
 # that was painless, now we enable A20
 
-	#call	empty_8042	# 8042 is the keyboard controller
-	#mov	$0xD1, %al	# command write
-	#out	%al, $0x64
-	#call	empty_8042
-	#mov	$0xDF, %al	# A20 on
-	#out	%al, $0x60
-	#call	empty_8042
 	inb     $0x92, %al	# open A20 line(Fast Gate A20).
 	orb     $0b00000010, %al
 	outb    %al, $0x92
@@ -136,49 +129,55 @@ end_move:
 # which is used for the internal hardware interrupts as well. We just
 # have to reprogram the 8259's, and it isn't fun.
 
-	mov	$0x11, %al		# initialization sequence(ICW1)
+
+# use two 8259 chips
+
+#ICW1
+#use A0 = 0, D4 = 1 to initial chip 
+	mov	$0x10, %al		# initialization sequence(ICW1)
 					# ICW4 needed(1),CASCADE mode,Level-triggered
 	out	%al, $0x20		# send it to 8259A-1
 	.word	0x00eb,0x00eb		# jmp $+2, jmp $+2
 	out	%al, $0xA0		# and to 8259A-2
 	.word	0x00eb,0x00eb
+
+#ICW2
 	mov	$0x20, %al		# start of hardware int's (0x20)(ICW2)
 	out	%al, $0x21		# from 0x20-0x27
 	.word	0x00eb,0x00eb
 	mov	$0x28, %al		# start of hardware int's 2 (0x28)
 	out	%al, $0xA1		# from 0x28-0x2F
 	.word	0x00eb,0x00eb		#               IR 7654 3210
+
+#ICW3 identify master or slave
 	mov	$0x04, %al		# 8259-1 is master(0000 0100) --\
 	out	%al, $0x21		#				|
 	.word	0x00eb,0x00eb		#			 INT	/
 	mov	$0x02, %al		# 8259-2 is slave(       010 --> 2)
 	out	%al, $0xA1
 	.word	0x00eb,0x00eb
+
+#ICW4
 	mov	$0x01, %al		# 8086 mode for both
 	out	%al, $0x21
 	.word	0x00eb,0x00eb
 	out	%al, $0xA1
 	.word	0x00eb,0x00eb
+
+#mask all int
 	mov	$0xFF, %al		# mask off all interrupts for now
 	out	%al, $0x21
 	.word	0x00eb,0x00eb
 	out	%al, $0xA1
 
-# well, that certainly wasn't fun :-(. Hopefully it works, and we don't
-# need no steenking BIOS anyway (except for the initial loading :-).
-# The BIOS-routine wants lots of unnecessary data, and it's less
-# "interesting" anyway. This is how REAL programmers do it.
-#
-# Well, now's the time to actually move into protected mode. To make
-# things as simple as possible, we do no register set-up or anything,
-# we let the gnu-compiled 32-bit programs do that. We just jump to
-# absolute address 0x00000, in 32-bit protected mode.
-	#mov	$0x0001, %ax	# protected mode (PE) bit
-	#lmsw	%ax		# This is it!
-	mov	%cr0, %eax	# get machine status(cr0|MSW)	
-	bts	$0, %eax	# turn on the PE-bit 
-	mov	%eax, %cr0	# protection enabled
-				
+
+# we get into vitual mode
+	mov %cr0, %eax # the cr0 regist is 32bit
+	bts $0, %ax # set pe bit in cr0 to get in protect mode
+	mov %eax, %cr0
+
+
+# jmp to head.s
 				# segment-descriptor        (INDEX:TI:RPL)
 	.equ	sel_cs0, 0x0008 # select for code segment 0 (  001:0 :00) 
 	ljmp	$sel_cs0, $0	# jmp offset 0 of code segment 0 in gdt
