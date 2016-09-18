@@ -1,27 +1,14 @@
-/*
- *  linux/boot/head.s
- *
- *  (C) 1991  Linus Torvalds
- */
-
-/*
- *  head.s contains the 32-bit startup code.
- *
- * NOTE!!! Startup happens at absolute address 0x00000000, which is also where
- * the page directory will exist. The startup code will be overwritten by
- * the page directory.
- */
 .text
 .globl idt,gdt,pg_dir,tmp_floppy_area
 pg_dir:
 .globl startup_32
 startup_32:
-	movl $0x10,%eax
-	mov %ax,%ds
-	mov %ax,%es
-	mov %ax,%fs
-	mov %ax,%gs
-	lss stack_start,%esp
+	movl $0x10, %eax # set seg addr to data seg addr
+	mov %ax, %ds
+	mov %ax, %es
+	mov %ax, %fs
+	mov %ax, %gs
+	lss stack_start, %esp
 	call setup_idt
 	call setup_gdt
 	movl $0x10,%eax		# reload all the segment registers
@@ -34,7 +21,7 @@ startup_32:
 1:	incl %eax		# check that A20 really IS enabled
 	movl %eax,0x000000	# loop forever if it isn't
 	cmpl %eax,0x100000
-	je 1b
+	je 1b # jmp to label '1' of the backward
 
 /*
  * NOTE! 486 should set bit 16, to check for write-protect in supervisor
@@ -78,20 +65,22 @@ check_x87:
  *  written by the page tables.
  */
 setup_idt:
-	lea ignore_int,%edx
-	movl $0x00080000,%eax
-	movw %dx,%ax		/* selector = 0x0008 = cs */
-	movw $0x8E00,%dx	/* interrupt gate - dpl=0, present */
+	lea ignore_int, %edx # save offset addr of isr
+	movl 0x00080000, %eax # set isr to cs seg addr
+	mov %dx, %ax # mov 15:0 bits offset to ax
+	mov $0x8E00, %dx # set Interrupt Gate
 
-	lea idt,%edi
-	mov $256,%ecx
-rp_sidt:
-	movl %eax,(%edi)
-	movl %edx,4(%edi)
-	addl $8,%edi
+	lea idt, %edi # set idt table addr to di reg
+	mov $256, %ecx # set total table num is 256
+
+come_on_baby:
+	movl %eax, (%edi)
+	movl %edx, 4(%edi)
+	addl $8, %edi
 	dec %ecx
-	jne rp_sidt
-	lidt idt_descr
+	jne come_on_baby
+
+	lidt idt_descr # after we set idt table, we load idt addr to idt reg
 	ret
 
 /*
@@ -196,23 +185,29 @@ ignore_int:
  * some kind of marker at them (search for "16Mb"), but I
  * won't guarantee that's all :-( )
  */
-.align 2
+.align 2 # 按4字节对齐
 setup_paging:
-	movl $1024*5,%ecx		/* 5 pages - pg_dir+4 page tables */
-	xorl %eax,%eax
-	xorl %edi,%edi			/* pg_dir is at 0x000 */
-	cld;rep;stosl
+	movl $1024*5, %ecx # clear page data
+	xorl %eax, %eax
+	xorl %edi, %edi
+	cld # auto inc
+	rep 
+	stosl
+
+	# 设置页目录
 	movl $pg0+7,pg_dir		/* set present bit/user r/w */
 	movl $pg1+7,pg_dir+4		/*  --------- " " --------- */
 	movl $pg2+7,pg_dir+8		/*  --------- " " --------- */
 	movl $pg3+7,pg_dir+12		/*  --------- " " --------- */
 	movl $pg3+4092,%edi
+
+	#设置页表
 	movl $0xfff007,%eax		/*  16Mb - 4096 + 7 (r/w user,p) */
 	std
 1:	stosl			/* fill pages backwards - more efficient :-) */
 	subl $0x1000,%eax
 	jge 1b
-	cld
+	cld 
 	xorl %eax,%eax		/* pg_dir is at 0x0000 */
 	movl %eax,%cr3		/* cr3 - page directory start */
 	movl %cr0,%eax
@@ -234,8 +229,8 @@ gdt_descr:
 	.align 8
 idt:	.fill 256,8,0		# idt is uninitialized
 
-gdt:	.quad 0x0000000000000000	/* NULL descriptor */
+gdt:
+	.quad 0x0000000000000000	/* NULL descriptor */
 	.quad 0x00c09a0000000fff	/* 16Mb */
 	.quad 0x00c0920000000fff	/* 16Mb */
-	.quad 0x0000000000000000	/* TEMPORARY - don't use */
-	.fill 252,8,0			/* space for LDT's and TSS's etc */
+	.fill 253,8,0			/* space for LDT's and TSS's etc */
